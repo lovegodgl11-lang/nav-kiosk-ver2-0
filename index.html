@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Kiosk shop</title><meta name="title" content="Kiosk shop"><meta name="description" content="Security payment "><meta charset="UTF-8">
+<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Nav kiosk </title><meta name="title" content="Nav kiosk "><meta name="description" content="Update version 2"><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="./style.css"><script src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.js" async=""></script><script type="importmap">{
   "imports": {}
 }</script></head><body>
@@ -141,6 +141,28 @@
         <p id="verification-status-text" class="text-gray-400 mt-2 text-2xl">Please wait while an admin reviews your payment proof.</p>
     </div>
 
+    <!-- PAYMENT SUCCESS VIEW -->
+    <div id="payment-success-view" class="view flex-col items-center justify-center text-center p-8 w-full h-full">
+        <div class="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24 mx-auto text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+            </svg>
+            <h1 class="text-3xl font-bold mt-4 text-gray-800">Payment Verified!</h1>
+            <p class="text-lg text-gray-600 mt-2">Your payment has been successfully confirmed by the admin.</p>
+            <div class="mt-6 bg-gray-100 p-4 rounded-lg space-y-2 text-left">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Amount Verified:</span>
+                    <span id="verified-amount-display" class="font-bold text-gray-800">₹0.00</span>
+                </div>
+                <div class="flex justify-between text-xl">
+                    <span class="text-gray-600 font-semibold">New Outstanding Balance:</span>
+                    <span id="new-balance-display" class="font-bold text-red-600">₹0.00</span>
+                </div>
+            </div>
+            <button id="back-to-status-btn" class="mt-8 w-full bg-indigo-600 text-white py-3 px-4 rounded-md font-semibold text-lg">View My Orders</button>
+        </div>
+    </div>
+
     <!-- Virtual Keyboard -->
     <div id="virtual-keyboard" class="virtual-keyboard"></div>
     
@@ -181,7 +203,8 @@
             newOrder: document.getElementById('new-order-view'),
             helpRequest: document.getElementById('help-request-view'),
             paymentProof: document.getElementById('payment-proof-view'),
-            waitingVerification: document.getElementById('waiting-verification-view')
+            waitingVerification: document.getElementById('waiting-verification-view'),
+            paymentSuccess: document.getElementById('payment-success-view')
         };
 
         // --- Core Functions ---
@@ -405,21 +428,52 @@
                 switchView('menu');
             }, 60000); // 60 second timeout
 
-            proofListenerRef.on('value', snapshot => {
+            proofListenerRef.on('value', async snapshot => {
                 if (!snapshot.exists()) return;
                 const data = snapshot.val();
                 if (data.status === 'verified') {
                     clearTimeout(verificationTimeout);
                     proofListenerRef.off();
-                    switchView('status');
-                    speak("Your payment has been successfully verified by the admin. Please check your balance.", null);
-                    checkStatusAndPay();
+
+                    const verifiedAmount = data.verifiedAmount || 0;
+                    
+                    // Re-fetch all orders to calculate the new grand total
+                    const mobile = document.getElementById('mobile-number-input').value;
+                    const ordersSnapshot = await db.ref('orders').orderByChild('customerMobile').equalTo(mobile).once('value');
+                    let newGrandTotalBalance = 0;
+                    if (ordersSnapshot.exists()) {
+                         const ordersData = ordersSnapshot.val();
+                         const calculateOrderBalance = (order) => {
+                            const totalCharges = order.type === 'stitching' ? (order.items || []).reduce((s, i) => s + (parseFloat(i.charges) || 0), 0) : (parseFloat(order.charges) || 0);
+                            const received = order.receivedPayment || 0;
+                            return totalCharges - received;
+                        };
+                        Object.values(ordersData).forEach(order => {
+                            newGrandTotalBalance += calculateOrderBalance(order);
+                        });
+                    }
+
+                    // Populate and show the success view
+                    document.getElementById('verified-amount-display').textContent = `₹${verifiedAmount.toFixed(2)}`;
+                    const newBalanceDisplay = document.getElementById('new-balance-display');
+                    newBalanceDisplay.textContent = `₹${newGrandTotalBalance.toFixed(2)}`;
+                    if(newGrandTotalBalance <= 0) {
+                         newBalanceDisplay.classList.remove('text-red-600');
+                         newBalanceDisplay.classList.add('text-green-600');
+                    } else {
+                         newBalanceDisplay.classList.remove('text-green-600');
+                         newBalanceDisplay.classList.add('text-red-600');
+                    }
+                    
+                    switchView('paymentSuccess');
+                    speak(`Your payment of ${Math.round(verifiedAmount)} rupees has been successfully verified. Your new balance is ${Math.round(newGrandTotalBalance)} rupees.`, null);
+                    
                 } else if (data.status === 'rejected') {
                     clearTimeout(verificationTimeout);
                     proofListenerRef.off();
                     switchView('status');
                     speak("There was an issue with your proof. Please try again or request help from a staff member.", null);
-                    checkStatusAndPay();
+                    checkStatusAndPay(); // re-render status view
                 }
             });
         }
@@ -756,6 +810,10 @@
             document.getElementById('cancel-proof-btn').addEventListener('click', () => {
                 stopProofStream();
                 switchView('status');
+            });
+            document.getElementById('back-to-status-btn').addEventListener('click', () => {
+                switchView('status');
+                checkStatusAndPay();
             });
 
             document.getElementById('mobile-number-input').addEventListener('focus', (e) => showKeyboard(e.target));
