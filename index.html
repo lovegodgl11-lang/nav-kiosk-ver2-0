@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en" class=""><head><script>window.livecodes = window.livecodes || {};</script><title>Kiosk shop</title><meta name="title" content="Kiosk shop"><meta name="description" content="Security payment "><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="./style.css"><script src="https://cdn.jsdelivr.net/npm/es-module-shims@1.10.0/dist/es-module-shims.js" async=""></script><script type="importmap">{
+  "imports": {}
+}</script></head><body>
+
+
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Voice Assistant Kiosk</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.15.0/firebase-database-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        html, body { height: 100%; width: 100%; margin: 0; overflow: hidden; }
+        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #f9fafb; -webkit-tap-highlight-color: transparent; }
+        .view { display: none; width: 100%; height: 100%; }
+        .view.active { display: flex; }
+        .main-btn {
+            transform: scale(1);
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .main-btn:active { transform: scale(0.95); }
+        .virtual-keyboard {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background-color: #2c3e50; padding: 10px;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.3);
+            display: none; z-index: 100;
+        }
+        .keyboard-row { display: flex; justify-content: center; margin: 5px 0; }
+        .keyboard-key {
+            background: #ecf0f1; color: #2c3e50; border: none;
+            border-radius: 5px; padding: 15px 20px; margin: 3px;
+            font-size: 1.2em; font-weight: 500; cursor: pointer;
+            flex-grow: 1; flex-basis: 0; display: flex; align-items: center; justify-content: center;
+        }
+        .keyboard-key:active { background-color: #bdc3c7; }
+        .key-special { flex-grow: 1.5; background-color: #95a5a6; color: white; }
+    </style>
+<link rel="stylesheet" href="/index.css">
+
+
+
+    <!-- Views -->
+    <div id="idle-view" class="view active flex-col items-center justify-center text-center p-8 bg-gray-800 rounded-2xl shadow-lg w-full h-full">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24 mx-auto text-indigo-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+        </svg>
+        <h1 class="text-5xl font-bold mt-6">Welcome</h1>
+        <p class="text-gray-400 mt-2 text-2xl">Tap anywhere to begin</p>
+    </div>
+
+    <div id="menu-view" class="view flex-col items-center justify-center text-center p-8 w-full h-full">
+        <h1 class="text-4xl font-bold mb-10">How can I help you today?</h1>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
+            <button class="main-btn bg-indigo-600 text-white p-8 rounded-2xl shadow-lg text-2xl font-semibold" data-target="new-order-view">New Order</button>
+            <button class="main-btn bg-green-600 text-white p-8 rounded-2xl shadow-lg text-2xl font-semibold" data-target="status-view">Check Status &amp; Pay</button>
+            <button class="main-btn bg-amber-500 text-white p-8 rounded-2xl shadow-lg text-2xl font-semibold" data-target="help-request-view">Help</button>
+        </div>
+    </div>
+    
+    <div id="call-view" class="view flex-col items-center justify-center text-center p-8 w-full h-full">
+        <h1 id="call-title" class="text-4xl font-bold mb-4">Connecting...</h1>
+        <p id="call-subtitle" class="text-xl text-gray-400 mb-6">Please wait while we connect you to a staff member.</p>
+        <div class="relative w-full max-w-2xl aspect-video bg-black rounded-lg overflow-hidden border-4 border-gray-600">
+            <video id="local-video" autoplay="" playsinline="" muted="" class="absolute top-2 right-2 w-1/4 rounded-md z-10"></video>
+            <video id="remote-video" autoplay="" playsinline="" class="w-full h-full object-cover"></video>
+        </div>
+        <button id="end-call-btn" class="mt-8 bg-red-600 text-white py-3 px-8 rounded-lg font-semibold text-lg">End Call</button>
+    </div>
+
+    <div id="status-view" class="view flex-col items-center justify-center p-8 w-full h-full">
+         <h1 class="text-3xl font-bold mb-2">Check Status &amp; Pay</h1>
+         <p class="text-gray-400 mb-8">Please enter your 10-digit mobile number.</p>
+         <div class="w-full max-w-md">
+            <div id="grand-total-container" class="hidden mb-4 bg-gray-900 text-white p-4 rounded-lg text-center">
+                <p class="text-sm uppercase tracking-wider text-gray-400">Total Outstanding Balance (All Orders)</p>
+                <p id="grand-total-display" class="text-4xl font-bold mt-1">₹0.00</p>
+            </div>
+            <input type="tel" id="mobile-number-input" class="form-input block w-full px-4 py-3 border bg-gray-700 border-gray-600 rounded-md shadow-sm text-center text-3xl tracking-widest mb-4" placeholder="_ _ _ _ _  _ _ _ _ _" readonly="">
+            
+            <div id="orders-container" class="hidden mt-4">
+                <div id="order-display" class="bg-gray-800 p-4 rounded-lg min-h-[400px] flex flex-col justify-center">
+                    <!-- Single order content will be injected here -->
+                </div>
+                <div id="pagination-controls" class="hidden flex justify-between items-center mt-4">
+                    <button id="prev-order-btn" class="bg-gray-600 text-white py-2 px-6 rounded-md font-semibold text-lg disabled:opacity-50">&lt; Prev</button>
+                    <span id="order-counter" class="text-gray-400 font-semibold"></span>
+                    <button id="next-order-btn" class="bg-gray-600 text-white py-2 px-6 rounded-md font-semibold text-lg disabled:opacity-50">Next &gt;</button>
+                </div>
+            </div>
+
+            <button id="back-to-menu-status" class="mt-6 w-full bg-gray-600 text-white py-3 px-4 rounded-md font-semibold text-lg">Back to Menu</button>
+         </div>
+    </div>
+
+    <!-- NEW ORDER VIEW -->
+    <div id="new-order-view" class="view flex-col items-center justify-center p-8 w-full h-full">
+        <h1 class="text-3xl font-bold mb-2">New Order Request</h1>
+        <p class="text-gray-400 mb-8">Please fill in your details below.</p>
+        <div class="w-full max-w-md space-y-4">
+            <input type="text" id="new-order-name" class="form-input block w-full px-4 py-3 border bg-gray-700 border-gray-600 rounded-md shadow-sm text-center text-2xl" placeholder="Your Name" readonly="">
+            <input type="tel" id="new-order-mobile" class="form-input block w-full px-4 py-3 border bg-gray-700 border-gray-600 rounded-md shadow-sm text-center text-2xl" placeholder="Your Mobile Number" readonly="">
+            <textarea id="new-order-description" class="form-input block w-full px-4 py-3 border bg-gray-700 border-gray-600 rounded-md shadow-sm text-center text-2xl" placeholder="Describe your order (e.g., 2 suits, 1 shirt)" rows="3" readonly=""></textarea>
+            
+            <button id="submit-order-request-btn" class="w-full bg-indigo-600 text-white py-3 px-4 rounded-md font-semibold text-lg">Submit Request</button>
+            <button id="back-to-menu-order" class="mt-2 w-full bg-gray-600 text-white py-3 px-4 rounded-md font-semibold text-lg">Back to Menu</button>
+        </div>
+    </div>
+
+    <!-- NEW HELP REQUEST VIEW -->
+    <div id="help-request-view" class="view flex-col items-center justify-center p-8 w-full h-full">
+        <h1 class="text-3xl font-bold mb-2">Request Help</h1>
+        <p class="text-gray-400 mb-8">Please enter your details to start a video call.</p>
+        <div class="w-full max-w-md space-y-4">
+            <input type="text" id="help-name" class="form-input block w-full px-4 py-3 border bg-gray-700 border-gray-600 rounded-md shadow-sm text-center text-2xl" placeholder="Your Name" readonly="">
+            <input type="tel" id="help-mobile" class="form-input block w-full px-4 py-3 border bg-gray-700 border-gray-600 rounded-md shadow-sm text-center text-2xl" placeholder="Your Mobile Number" readonly="">
+            
+            <button id="request-video-call-btn" class="w-full bg-amber-600 text-white py-3 px-4 rounded-md font-semibold text-lg">Request Video Call</button>
+            <button id="back-to-menu-help" class="mt-2 w-full bg-gray-600 text-white py-3 px-4 rounded-md font-semibold text-lg">Back to Menu</button>
+        </div>
+    </div>
+
+     <!-- PAYMENT PROOF VIEW -->
+    <div id="payment-proof-view" class="view flex-col items-center justify-center text-center p-8 w-full h-full">
+        <h1 id="proof-title" class="text-4xl font-bold mb-4">Payment Proof Capture</h1>
+        <p id="proof-subtitle" class="text-xl text-gray-400 mb-6">Please hold your payment screenshot steady in front of the camera.</p>
+        <div class="relative w-full max-w-2xl aspect-video bg-black rounded-lg overflow-hidden border-4 border-gray-600">
+            <video id="proof-video" autoplay="" playsinline="" class="w-full h-full object-cover"></video>
+            <div id="proof-countdown" class="absolute inset-0 flex items-center justify-center text-9xl font-bold text-white bg-black bg-opacity-50 hidden"></div>
+        </div>
+        <button id="cancel-proof-btn" class="mt-8 bg-gray-600 text-white py-3 px-8 rounded-lg font-semibold text-lg">Cancel</button>
+    </div>
+
+    <!-- WAITING FOR VERIFICATION VIEW -->
+    <div id="waiting-verification-view" class="view flex-col items-center justify-center text-center p-8 w-full h-full">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24 mx-auto text-indigo-400 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 9a9 9 0 0114.65-5.32l-1.65 1.65M20 15a9 9 0 01-14.65 5.32l1.65-1.65"></path></svg>
+        <h1 class="text-4xl font-bold mt-6">Submitting for Verification</h1>
+        <p id="verification-status-text" class="text-gray-400 mt-2 text-2xl">Please wait while an admin reviews your payment proof.</p>
+    </div>
+
+    <!-- Virtual Keyboard -->
+    <div id="virtual-keyboard" class="virtual-keyboard"></div>
+    
+    <!-- Hidden elements for security capture -->
+    <div style="position: absolute; top: -9999px; left: -9999px;">
+        <video id="security-video" width="640" height="480" autoplay="" playsinline=""></video>
+        <canvas id="security-canvas" width="640" height="480"></canvas>
+        <canvas id="proof-canvas" width="1280" height="720"></canvas>
+    </div>
+
+    <script type="module">
+        // --- Firebase Config ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyC0_DQIiyaVQllFH4pxH1Dm3r2kFXXoOgc",
+            authDomain: "navrosetailorapp.firebaseapp.com",
+            databaseURL: "https://navrosetailorapp-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "navrosetailorapp"
+        };
+        
+        // --- App State & Elements ---
+        let db, recognition, kioskId, peerConnection, localStream, remoteStream, kioskLiveRef, proofStream = null;
+        let isKeyboardVisible = false, currentInput = null;
+        let paymentSettings = {};
+        let customerOrdersCache = [];
+        let currentOrderIndex = 0;
+
+        // Security Feature State
+        let clickTimestamps = [];
+        const MISUSE_CLICK_THRESHOLD = 15; // 15 clicks
+        const MISUSE_TIME_WINDOW_MS = 5000; // within 5 seconds
+        let isCaptureInProgress = false;
+
+        const views = {
+            idle: document.getElementById('idle-view'),
+            menu: document.getElementById('menu-view'),
+            status: document.getElementById('status-view'),
+            call: document.getElementById('call-view'),
+            newOrder: document.getElementById('new-order-view'),
+            helpRequest: document.getElementById('help-request-view'),
+            paymentProof: document.getElementById('payment-proof-view'),
+            waitingVerification: document.getElementById('waiting-verification-view')
+        };
+
+        // --- Core Functions ---
+        function switchView(viewName) {
+            Object.values(views).forEach(v => v.classList.remove('active'));
+            if (views[viewName]) views[viewName].classList.add('active');
+        }
+
+        function speak(text, onEndCallback) {
+            speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-IN';
+            utterance.onend = onEndCallback;
+            speechSynthesis.speak(utterance);
+        }
+
+        // --- Virtual Keyboard ---
+        function createKeyboard() {
+            const keyboardContainer = document.getElementById('virtual-keyboard');
+            const keys = [
+                ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+                ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+                ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
+                ['z', 'x', 'c', 'v', 'b', 'n', 'm', 'Backspace'],
+                ['Space', 'Enter']
+            ];
+            let html = '';
+            keys.forEach(row => {
+                html += '<div class="keyboard-row">';
+                row.forEach(key => {
+                    let specialClass = '';
+                    if (['Backspace', 'Enter', 'Space'].includes(key)) specialClass = 'key-special';
+                    html += `<button class="keyboard-key ${specialClass}" data-key="${key}">${key === 'Space' ? ' ' : key}</button>`;
+                });
+                html += '</div>';
+            });
+            keyboardContainer.innerHTML = html;
+        }
+
+        function showKeyboard(inputElement) {
+            currentInput = inputElement;
+            document.getElementById('virtual-keyboard').style.display = 'block';
+            isKeyboardVisible = true;
+        }
+
+        function hideKeyboard() {
+            document.getElementById('virtual-keyboard').style.display = 'none';
+            isKeyboardVisible = false;
+            currentInput = null;
+        }
+
+        // --- WebRTC Logic ---
+        const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+        async function startCall(callType, callDetails = {}) {
+            switchView('call');
+
+            let title = 'Requesting Help';
+            let status = 'help_requested';
+            let callLogType = 'Help Request';
+            
+            const kioskInfo = { name: "Kiosk 1" };
+
+            // Create call log entry
+            const callLogRef = db.ref('kiosk/callLogs').push();
+            const currentCallLogKey = callLogRef.key;
+            const logData = {
+                key: currentCallLogKey,
+                kioskId: kioskId,
+                kioskName: kioskInfo.name,
+                callType: callLogType,
+                customerInfo: callDetails.customerInfo || null,
+                initiatedAt: firebase.database.ServerValue.TIMESTAMP,
+                status: 'ringing',
+                adminSaw: false
+            };
+            await callLogRef.set(logData);
+
+            document.getElementById('call-title').textContent = title;
+            document.getElementById('call-subtitle').textContent = 'Connecting to staff...';
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('local-video').srcObject = localStream;
+
+                peerConnection = new RTCPeerConnection(rtcConfig);
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                peerConnection.ontrack = event => {
+                    document.getElementById('remote-video').srcObject = event.streams[0];
+                };
+
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) {
+                        kioskLiveRef.child('webrtc/kioskCandidates').push(event.candidate.toJSON());
+                    }
+                };
+                
+                kioskLiveRef.child('webrtc/adminCandidates').on('child_added', snapshot => {
+                    if(!snapshot.exists()) return;
+                    const candidate = new RTCIceCandidate(snapshot.val());
+                    peerConnection.addIceCandidate(candidate).catch(e => console.error("Error adding ICE candidate", e));
+                });
+
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+
+                kioskLiveRef.set({
+                    status: status,
+                    kioskInfo: kioskInfo,
+                    customerInfo: callDetails.customerInfo || null,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    webrtc: { offer: { sdp: offer.sdp, type: offer.type } }
+                });
+                
+                kioskLiveRef.child('webrtc/answer').on('value', async snapshot => {
+                    if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
+                        await peerConnection.setRemoteDescription(snapshot.val());
+                        kioskLiveRef.update({ status: 'in_call' });
+                        if (currentCallLogKey) {
+                            db.ref(`kiosk/callLogs/${currentCallLogKey}`).update({ status: 'answered', answeredAt: firebase.database.ServerValue.TIMESTAMP });
+                        }
+                        document.getElementById('call-title').textContent = 'Connected';
+                        document.getElementById('call-subtitle').textContent = 'You are now speaking with a staff member.';
+                    }
+                });
+
+            } catch (error) {
+                console.error("Call failed to start:", error);
+                document.getElementById('call-title').textContent = 'Connection Failed';
+                document.getElementById('call-subtitle').textContent = 'Could not access camera/microphone. Please allow permissions.';
+            }
+        }
+        
+        function endCall() {
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            // Logic for updating call log status on call end is simplified and assumed handled
+            if(kioskLiveRef) {
+                kioskLiveRef.remove();
+            }
+            
+            document.getElementById('local-video').srcObject = null;
+            document.getElementById('remote-video').srcObject = null;
+            switchView('menu');
+        }
+
+        // --- PAYMENT PROOF LOGIC ---
+        function stopProofStream() {
+            if (proofStream) {
+                proofStream.getTracks().forEach(track => track.stop());
+                proofStream = null;
+            }
+            document.getElementById('proof-video').srcObject = null;
+        }
+
+        async function startPaymentProofCapture(orderInfo, customerInfo) {
+            speak("Please hold your payment proof in front of the camera. I will take a picture automatically in 10 seconds.", null);
+            switchView('paymentProof');
+            document.getElementById('proof-subtitle').textContent = 'Please hold your payment screenshot steady in front of the camera.';
+            try {
+                proofStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                document.getElementById('proof-video').srcObject = proofStream;
+
+                const countdownEl = document.getElementById('proof-countdown');
+                countdownEl.classList.remove('hidden');
+                let count = 10;
+                countdownEl.textContent = count;
+                const countdownInterval = setInterval(() => {
+                    count--;
+                    countdownEl.textContent = count;
+                    if (count === 0) {
+                        clearInterval(countdownInterval);
+                        countdownEl.classList.add('hidden');
+                        captureAndSubmitProof(orderInfo, customerInfo);
+                    }
+                }, 1000);
+            } catch (error) {
+                console.error("Camera access failed for proof capture:", error);
+                speak("I couldn't access the camera. Please allow camera permissions and try again.", null);
+                switchView('status');
+            }
+        }
+
+        function captureAndSubmitProof(orderInfo, customerInfo) {
+            const videoEl = document.getElementById('proof-video');
+            const canvasEl = document.getElementById('proof-canvas');
+            const context = canvasEl.getContext('2d');
+            
+            canvasEl.width = videoEl.videoWidth;
+            canvasEl.height = videoEl.videoHeight;
+            context.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+            const imageData = canvasEl.toDataURL('image/jpeg', 0.8);
+            
+            stopProofStream();
+            switchView('waitingVerification');
+            speak("Thank you. I've sent your proof for verification. Please wait a moment.", null);
+
+            const proofRef = db.ref('kiosk/paymentProofs').push();
+            const proofData = {
+                key: proofRef.key,
+                imageData: imageData,
+                orderInfo: orderInfo,
+                customerInfo: customerInfo,
+                kioskId: kioskId,
+                status: 'pending_verification',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+            proofRef.set(proofData);
+
+            let proofListenerRef = db.ref(`kiosk/paymentProofs/${proofRef.key}`);
+            const verificationTimeout = setTimeout(() => {
+                proofListenerRef.off();
+                speak("It's taking a while to verify. Your payment details will be updated shortly. Thank you for using Navrose Stitching automate system.", null);
+                switchView('menu');
+            }, 60000); // 60 second timeout
+
+            proofListenerRef.on('value', snapshot => {
+                if (!snapshot.exists()) return;
+                const data = snapshot.val();
+                if (data.status === 'verified') {
+                    clearTimeout(verificationTimeout);
+                    proofListenerRef.off();
+                    switchView('status');
+                    speak("Your payment has been successfully verified by the admin. Please check your balance.", null);
+                    checkStatusAndPay();
+                } else if (data.status === 'rejected') {
+                    clearTimeout(verificationTimeout);
+                    proofListenerRef.off();
+                    switchView('status');
+                    speak("There was an issue with your proof. Please try again or request help from a staff member.", null);
+                    checkStatusAndPay();
+                }
+            });
+        }
+        
+        // --- NEW ORDER FORM LOGIC ---
+        function resetNewOrderForm() {
+            document.getElementById('new-order-name').value = '';
+            document.getElementById('new-order-mobile').value = '';
+            document.getElementById('new-order-description').value = '';
+        }
+
+        async function submitOrderRequest() {
+            const name = document.getElementById('new-order-name').value.trim();
+            const mobile = document.getElementById('new-order-mobile').value.trim();
+            const description = document.getElementById('new-order-description').value.trim();
+
+            if (!name || !mobile || !description) {
+                speak("Please fill out all the fields.");
+                alert("Please fill out all the fields.");
+                return;
+            }
+
+            if (!/^\d{10}$/.test(mobile)) {
+                speak("Please enter a valid 10-digit mobile number.");
+                alert("Please enter a valid 10-digit mobile number.");
+                return;
+            }
+
+            hideKeyboard();
+
+            const requestData = {
+                customerName: name,
+                customerMobile: mobile,
+                description: description,
+                status: 'pending',
+                kioskId: kioskId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+
+            try {
+                await db.ref('kiosk/orderRequests').push(requestData);
+                speak("Your request has been submitted successfully. A staff member will call your name shortly.");
+                alert("Request submitted! A staff member will be with you shortly.");
+                resetNewOrderForm();
+                switchView('menu');
+            } catch (error) {
+                console.error("Failed to submit order request:", error);
+                speak("Sorry, there was an error submitting your request. Please try again or seek help.");
+                alert("Sorry, there was an error submitting your request. Please try again.");
+            }
+        }
+        
+        // --- HELP REQUEST FORM LOGIC ---
+        function resetHelpRequestForm() {
+            document.getElementById('help-name').value = '';
+            document.getElementById('help-mobile').value = '';
+        }
+
+        async function submitHelpRequest() {
+            const name = document.getElementById('help-name').value.trim();
+            const mobile = document.getElementById('help-mobile').value.trim();
+
+            if (!name || !mobile) {
+                speak("Please fill out your name and mobile number.");
+                alert("Please fill out your name and mobile number.");
+                return;
+            }
+            if (!/^\d{10}$/.test(mobile)) {
+                speak("Please enter a valid 10-digit mobile number.");
+                alert("Please enter a valid 10-digit mobile number.");
+                return;
+            }
+
+            hideKeyboard();
+            startCall('help', { customerInfo: { customerName: name, customerMobile: mobile } });
+        }
+        
+        // --- SECURITY & ACTIVITY CAPTURE LOGIC ---
+        async function captureLoginPhoto() {
+            const videoEl = document.getElementById('security-video');
+            const canvasEl = document.getElementById('security-canvas');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                videoEl.srcObject = stream;
+
+                await new Promise(resolve => setTimeout(resolve, 500)); // Wait for camera to adjust
+
+                const context = canvasEl.getContext('2d');
+                context.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+                const imageData = canvasEl.toDataURL('image/jpeg', 0.7);
+                
+                stream.getTracks().forEach(track => track.stop());
+                videoEl.srcObject = null;
+
+                const activityData = {
+                    kioskId: kioskId,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    imageData: imageData,
+                };
+                await db.ref('kiosk/loginActivity').push(activityData);
+                console.log("Login photo captured and sent.");
+
+            } catch (error) {
+                console.error("Could not capture login photo:", error);
+                // Fail silently but log the error for admin
+                await db.ref('kiosk/loginActivity').push({
+                    kioskId: kioskId,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    error: 'Camera capture failed: ' + error.message,
+                });
+            }
+        }
+
+        async function triggerSecurityCapture() {
+            if (isCaptureInProgress) return;
+            isCaptureInProgress = true;
+            console.log("Misuse detected. Triggering security capture.");
+
+            try {
+                const videoEl = document.getElementById('security-video');
+                const canvasEl = document.getElementById('security-canvas');
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                videoEl.srcObject = stream;
+
+                // Wait a moment for the camera to adjust
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                const context = canvasEl.getContext('2d');
+                context.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+                const imageData = canvasEl.toDataURL('image/jpeg', 0.7);
+                
+                // Stop the camera stream immediately
+                stream.getTracks().forEach(track => track.stop());
+                videoEl.srcObject = null;
+
+                // Send to Firebase
+                const alertData = {
+                    kioskId: kioskId,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    imageData: imageData,
+                    reason: 'Rapid clicking detected',
+                    acknowledged: false
+                };
+                await db.ref('kiosk/securityAlerts').push(alertData);
+                console.log("Security alert sent to admin.");
+                speak("Please use the kiosk gently.", null);
+
+            } catch (error) {
+                console.error("Could not capture security image:", error);
+                // Send an alert without an image if camera fails
+                await db.ref('kiosk/securityAlerts').push({
+                    kioskId: kioskId,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    reason: 'Rapid clicking detected (camera failed)',
+                    acknowledged: false
+                });
+            } finally {
+                // Add a cool-down period before another capture can be triggered
+                setTimeout(() => { isCaptureInProgress = false; }, 10000);
+            }
+        }
+
+        function handleGlobalClick(e) {
+            const now = Date.now();
+            clickTimestamps.push(now);
+            
+            // Filter out clicks older than the time window
+            clickTimestamps = clickTimestamps.filter(ts => now - ts < MISUSE_TIME_WINDOW_MS);
+            
+            if (clickTimestamps.length >= MISUSE_CLICK_THRESHOLD) {
+                triggerSecurityCapture();
+                clickTimestamps = []; // Reset after triggering
+            }
+        }
+        
+        // --- App Logic ---
+        function renderPaginatedOrder() {
+            const orderDisplay = document.getElementById('order-display');
+            const paginationControls = document.getElementById('pagination-controls');
+            const orderCounter = document.getElementById('order-counter');
+            const prevBtn = document.getElementById('prev-order-btn');
+            const nextBtn = document.getElementById('next-order-btn');
+
+            if (customerOrdersCache.length === 0) {
+                orderDisplay.innerHTML = '<p class="text-center text-gray-300">No orders found for this number.</p>';
+                paginationControls.classList.add('hidden');
+                return;
+            }
+
+            // Show pagination if more than one order
+            if (customerOrdersCache.length > 1) {
+                paginationControls.classList.remove('hidden');
+                orderCounter.textContent = `Order ${currentOrderIndex + 1} of ${customerOrdersCache.length}`;
+                prevBtn.disabled = currentOrderIndex === 0;
+                nextBtn.disabled = currentOrderIndex === customerOrdersCache.length - 1;
+            } else {
+                paginationControls.classList.add('hidden');
+            }
+
+            const order = customerOrdersCache[currentOrderIndex];
+            const totalCharges = order.type === 'stitching' ? (order.items || []).reduce((s, i) => s + (parseFloat(i.charges) || 0), 0) : (parseFloat(order.charges) || 0);
+            const received = order.receivedPayment || 0;
+            const balance = totalCharges - received;
+            
+            const upiId = paymentSettings.upiId || 'navrose.stitching@okhdfcbank';
+            const upiLink = `upi://pay?pa=${upiId}&pn=Navrose%20Stitching%20Point&am=${balance.toFixed(2)}`;
+            const qrImageHtml = paymentSettings.qrCodeBase64 
+                ? `<img src="${paymentSettings.qrCodeBase64}" class="mx-auto rounded-lg bg-white p-1 w-40 h-40 object-contain">
+                   <p class="text-xs text-center mt-1 text-gray-300">Please enter amount ₹${balance.toFixed(2)} manually.</p>`
+                : `<img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiLink)}" class="mx-auto rounded-lg bg-white p-1">`;
+
+            const orderHTML = `
+                <div class="bg-gray-700 p-4 rounded-lg">
+                    <div class="flex justify-between items-center">
+                        <p class="font-bold">Order #${order.orderNumber}</p>
+                        <span class="text-sm font-semibold px-2 py-1 rounded-full ${order.status === 'Completed' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}">${order.status}</span>
+                    </div>
+                    <p class="text-sm text-gray-400">Balance: <span class="font-bold ${balance > 0 ? 'text-red-400' : 'text-green-400'}">₹${balance.toFixed(2)}</span></p>
+                    ${balance > 0 ? `<div class="mt-3">
+                        ${qrImageHtml}
+                        <p class="text-xs text-center text-gray-300 my-3">If you've paid, click below and show the payment screenshot to the camera for verification.</p>
+                        <button class="verify-payment-btn w-full mt-2 bg-blue-600 text-white py-2 rounded-md font-semibold" data-order-index="${currentOrderIndex}">I Have Paid, Verify Now</button>
+                    </div>` : '<p class="text-center mt-8 font-semibold text-green-400">This order is fully paid. Thank you!</p>'}
+                </div>
+            `;
+            orderDisplay.innerHTML = orderHTML;
+        }
+
+        async function checkStatusAndPay() {
+            const mobile = document.getElementById('mobile-number-input').value;
+            if (mobile.length !== 10) return;
+            
+            const ordersContainer = document.getElementById('orders-container');
+            const orderDisplay = document.getElementById('order-display');
+            ordersContainer.classList.remove('hidden');
+            orderDisplay.innerHTML = '<p class="text-center text-gray-300">Searching for orders...</p>';
+
+            const snapshot = await db.ref('orders').orderByChild('customerMobile').equalTo(mobile).once('value');
+            if (!snapshot.exists()) {
+                customerOrdersCache = [];
+                currentOrderIndex = 0;
+                renderPaginatedOrder();
+                return;
+            }
+            
+            const ordersData = snapshot.val();
+            customerOrdersCache = Object.keys(ordersData).map(key => ({ ...ordersData[key], firebaseKey: key }));
+             // Sort orders to show most recent first
+            customerOrdersCache.sort((a,b) => (b.bookingDate && a.bookingDate) ? new Date(b.bookingDate) - new Date(a.bookingDate) : 0);
+            
+            let grandTotalBalance = 0;
+            const calculateOrderBalance = (order) => {
+                const totalCharges = order.type === 'stitching' ? (order.items || []).reduce((s, i) => s + (parseFloat(i.charges) || 0), 0) : (parseFloat(order.charges) || 0);
+                const received = order.receivedPayment || 0;
+                return totalCharges - received;
+            };
+            customerOrdersCache.forEach(order => {
+                grandTotalBalance += calculateOrderBalance(order);
+            });
+            
+            const grandTotalContainer = document.getElementById('grand-total-container');
+            const grandTotalDisplay = document.getElementById('grand-total-display');
+            
+            if (customerOrdersCache.length > 0) {
+                grandTotalDisplay.textContent = `₹${grandTotalBalance.toFixed(2)}`;
+                grandTotalContainer.classList.remove('hidden');
+            } else {
+                grandTotalContainer.classList.add('hidden');
+            }
+            
+            currentOrderIndex = 0;
+            renderPaginatedOrder();
+        }
+
+        // --- Event Listeners & Init ---
+        document.addEventListener('DOMContentLoaded', () => {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            kioskId = 'kiosk_01'; // Can be made dynamic
+            kioskLiveRef = db.ref(`kiosk/liveFeeds/${kioskId}`);
+            
+            db.ref('kiosk/paymentSettings').on('value', snapshot => {
+                paymentSettings = snapshot.val() || {};
+            });
+
+            // Set initial idle state
+            kioskLiveRef.update({ status: 'active_idle' });
+
+            createKeyboard();
+
+            document.getElementById('idle-view').addEventListener('click', () => {
+                captureLoginPhoto(); // Capture photo on interaction start
+                switchView('menu');
+            });
+            
+            document.querySelectorAll('.main-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const targetView = btn.dataset.target.replace('-view', '');
+                    if (targetView === 'help-request') {
+                        resetHelpRequestForm();
+                        switchView('helpRequest');
+                    } else if (targetView === 'new-order') {
+                        resetNewOrderForm();
+                        switchView('newOrder');
+                        speak("Welcome. In the description box, please mention the total number of items, and if you need new stitching or alterations. For payments or to check your order details, please go back and use the help option.");
+                    } else {
+                        switchView(targetView);
+                    }
+                });
+            });
+
+            document.getElementById('back-to-menu-status').addEventListener('click', () => {
+                document.getElementById('mobile-number-input').value = '';
+                document.getElementById('orders-container').classList.add('hidden');
+                document.getElementById('grand-total-container').classList.add('hidden');
+                hideKeyboard();
+                switchView('menu');
+            });
+            document.getElementById('back-to-menu-order').addEventListener('click', () => {
+                hideKeyboard();
+                resetNewOrderForm();
+                switchView('menu');
+            });
+            document.getElementById('back-to-menu-help').addEventListener('click', () => {
+                hideKeyboard();
+                resetHelpRequestForm();
+                switchView('menu');
+            });
+            
+            document.getElementById('submit-order-request-btn').addEventListener('click', submitOrderRequest);
+            document.getElementById('request-video-call-btn').addEventListener('click', submitHelpRequest);
+            document.getElementById('end-call-btn').addEventListener('click', endCall);
+            document.getElementById('cancel-proof-btn').addEventListener('click', () => {
+                stopProofStream();
+                switchView('status');
+            });
+
+            document.getElementById('mobile-number-input').addEventListener('focus', (e) => showKeyboard(e.target));
+            document.getElementById('new-order-name').addEventListener('focus', (e) => showKeyboard(e.target));
+            document.getElementById('new-order-mobile').addEventListener('focus', (e) => showKeyboard(e.target));
+            document.getElementById('new-order-description').addEventListener('focus', (e) => showKeyboard(e.target));
+            document.getElementById('help-name').addEventListener('focus', (e) => showKeyboard(e.target));
+            document.getElementById('help-mobile').addEventListener('focus', (e) => showKeyboard(e.target));
+            
+            document.getElementById('virtual-keyboard').addEventListener('click', (e) => {
+                if (!e.target.matches('.keyboard-key')) return;
+                const key = e.target.dataset.key;
+                
+                if (key === 'Enter') {
+                    if (currentInput && currentInput.id === 'mobile-number-input') {
+                        checkStatusAndPay();
+                    }
+                    hideKeyboard();
+                    return; 
+                }
+
+                if (!key || !currentInput) return;
+                
+                if (key === 'Backspace') {
+                    currentInput.value = currentInput.value.slice(0, -1);
+                } else if (key === 'Space') {
+                    currentInput.value += ' ';
+                } else {
+                    if (currentInput.id === 'mobile-number-input' && currentInput.value.length >= 10) return;
+                    currentInput.value += key;
+                }
+            });
+
+            document.getElementById('status-view').addEventListener('click', (e) => {
+                if(e.target.classList.contains('verify-payment-btn')) {
+                    const orderIndex = parseInt(e.target.dataset.orderIndex, 10);
+                    const order = customerOrdersCache[orderIndex];
+                    const orderInfo = {
+                        id: order.id || '',
+                        firebaseKey: order.firebaseKey,
+                        number: order.orderNumber
+                    };
+                    const customerInfo = {
+                        customerName: order.customerName,
+                        customerMobile: order.customerMobile
+                    }
+                    hideKeyboard();
+                    startPaymentProofCapture(orderInfo, customerInfo);
+                } else if(e.target.id !== 'mobile-number-input' && isKeyboardVisible && !e.target.closest('#virtual-keyboard')) {
+                    hideKeyboard();
+                }
+            });
+
+            document.getElementById('new-order-view').addEventListener('click', (e) => {
+                const isInput = e.target.matches('#new-order-name, #new-order-mobile, #new-order-description');
+                const isKeyboard = e.target.closest('#virtual-keyboard');
+                if (!isInput && !isKeyboard && isKeyboardVisible) {
+                    hideKeyboard();
+                }
+            });
+
+            document.getElementById('help-request-view').addEventListener('click', (e) => {
+                const isInput = e.target.matches('#help-name, #help-mobile');
+                const isKeyboard = e.target.closest('#virtual-keyboard');
+                if (!isInput && !isKeyboard && isKeyboardVisible) {
+                    hideKeyboard();
+                }
+            });
+
+            document.getElementById('prev-order-btn').addEventListener('click', () => {
+                if (currentOrderIndex > 0) {
+                    currentOrderIndex--;
+                    renderPaginatedOrder();
+                }
+            });
+            document.getElementById('next-order-btn').addEventListener('click', () => {
+                if (currentOrderIndex < customerOrdersCache.length - 1) {
+                    currentOrderIndex++;
+                    renderPaginatedOrder();
+                }
+            });
+            
+            // Activate security listener
+            document.body.addEventListener('click', handleGlobalClick);
+        });
+
+    </script>
+<script type="module" src="/index.tsx"></script>
+
+<script src="./script.js"></script></body></html>
